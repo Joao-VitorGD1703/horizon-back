@@ -1,0 +1,118 @@
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const { createClient } = require('@supabase/supabase-js');
+
+// Initialize Supabase with service role key for admin privileges inside webhook
+const supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(cors());
+
+// Webhook endpoint MUST use raw body for Stripe signature verification
+// It must be defined before express.json()
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+    const signature = req.headers['stripe-signature'];
+    const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+    let event;
+
+    try {
+        event = stripe.webhooks.constructEvent(
+            req.body,
+            signature,
+            endpointSecret
+        );
+    } catch (err) {
+        console.error(`⚠️  Webhook signature verification failed.`, err.message);
+        return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    // Handle the checkout.session.completed event
+    if (event.type === 'checkout.session.completed') {
+        const session = event.data.object;
+
+        // Retrieve the userId from metadata
+        const userId = session.metadata.userId;
+
+        if (userId) {
+            try {
+                // Update user in Supabase
+                // Using subscription_status to allow access to AI features
+                // or pagou_stripe if you prefer. Setting subscription_status to 'premium'
+                const { data, error } = await supabase
+                    .from('users') // Adjust if your table name is 'usuarios'
+                    .update({ subscription_status: 'premium' })
+                    .eq('id', userId);
+
+                if (error) {
+                    console.error('Error updating user in Supabase:', error);
+                } else {
+                    console.log(`Payment successful for user ${userId}. Updated subscription_status to 'premium'.`);
+                }
+            } catch (updateError) {
+                console.error('Supabase update exception:', updateError);
+            }
+        }
+    }
+
+    // Return a 200 response to acknowledge receipt of the event
+    res.status(200).send();
+});
+
+// Middleware for parsing JSON for the rest of the endpoints
+app.use(express.json());
+
+app.post('/api/stripe/create-checkout-session', async (req, res) => {
+    try {
+        const { userId } = req.body;
+
+        if (!userId) {
+            return res.status(400).json({ error: 'User ID is required' });
+        }
+
+        const session = await stripe.checkout.sessions.create({
+            payment_method_types: ['card'],
+            mode: 'payment', // using onetime payment
+            line_items: [
+                {
+                    price_data: {
+                        currency: 'brl',
+                        product_data: {
+                            name: 'Assinatura Premium Horizon AI',
+                            description: 'Acesso vitalício ou mensal às análises inteligentes de Revenue Management.',
+                        },
+                        unit_amount: 4990, // R$ 49,90 = 4990 centavos
+                    },
+                    quantity: 1,
+                },
+            ],
+            // Adding userId to metadata to retrieve it in the webhook
+            metadata: {
+                userId: userId
+            },
+            success_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard`,
+            cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard`,
+        });
+
+        res.status(200).json({ url: session.url });
+    } catch (error) {
+        console.error('Error creating checkout session:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Simple health check endpoint
+app.get('/health', (req, res) => {
+    res.status(200).send('Stripe Backend is running!');
+});
+
+app.listen(PORT, () => {
+    console.log(`Stripe Backend Server running on port ${PORT}`);
+});
