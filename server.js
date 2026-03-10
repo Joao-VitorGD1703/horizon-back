@@ -108,6 +108,33 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
     }
 });
 
+// Endpoint to cancel the subscription and revert to trial
+app.post('/api/stripe/cancel-subscription', async (req, res) => {
+    try {
+        const { userId } = req.body;
+
+        if (!userId) {
+            return res.status(400).json({ error: 'User ID is required' });
+        }
+
+        const { data, error } = await supabase
+            .from('users') // Adjust if your table name is 'usuarios'
+            .update({ subscription_status: 'trial' })
+            .eq('id', userId);
+
+        if (error) {
+            console.error('Error updating user in Supabase:', error);
+            return res.status(500).json({ error: 'Failed to cancel subscription' });
+        }
+
+        console.log(`Subscription cancelled for user ${userId}. Reverted to 'trial'.`);
+        res.status(200).json({ message: 'Subscription cancelled successfully', status: 'trial' });
+    } catch (error) {
+        console.error('Error creating cancel request:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Simple health check endpoint
 app.get('/health', (req, res) => {
     res.status(200).send('Stripe Backend is running!');
