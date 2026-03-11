@@ -97,7 +97,7 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
             metadata: {
                 userId: userId
             },
-            success_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard`,
+            success_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/success`,
             cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard`,
         });
 
