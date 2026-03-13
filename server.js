@@ -188,7 +188,7 @@ Regras de formatação (OBRIGATÓRIO):
 5. Se listar sugestões ou pontos de atenção, use sempre Bullet Points.
 6. Seja direto, como um verdadeiro consultor sênior de Revenue Management hoteleiro.`;
 
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
         const response = await fetch(geminiUrl, {
             method: 'POST',
@@ -226,4 +226,14 @@ app.get('/health', (req, res) => {
 
 app.listen(PORT, () => {
     console.log(`Stripe Backend Server running on port ${PORT}`);
+
+    // Evita hibernação no Render (plano gratuito dorme após 15 min sem requests)
+    const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
+    if (RENDER_URL) {
+        setInterval(() => {
+            fetch(`${RENDER_URL}/health`)
+                .then(() => console.log('[keep-alive] ping OK'))
+                .catch((err) => console.warn('[keep-alive] ping falhou:', err.message));
+        }, 14 * 60 * 1000); // a cada 14 minutos
+    }
 });
