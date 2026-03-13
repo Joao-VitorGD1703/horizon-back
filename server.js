@@ -135,6 +135,53 @@ app.post('/api/stripe/cancel-subscription', async (req, res) => {
     }
 });
 
+// ─── Gemini AI Proxy ─────────────────────────────────────────────────────────
+// Recebe { prompt, model? } do frontend e repassa ao Google Generative AI API.
+// Evita erros de CORS pois a chamada é feita server-side.
+app.post('/api/gemini/generate', async (req, res) => {
+    try {
+        const { prompt, model = 'gemini-2.5-flash' } = req.body;
+
+        if (!prompt) {
+            return res.status(400).json({ error: 'O campo "prompt" é obrigatório.' });
+        }
+
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) {
+            return res.status(500).json({ error: 'GEMINI_API_KEY não configurada no servidor.' });
+        }
+
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
+
+        const response = await fetch(geminiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }]
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            console.error('Gemini API error:', errorData);
+            return res.status(response.status).json({
+                error: 'Erro na API do Gemini',
+                details: errorData
+            });
+        }
+
+        const data = await response.json();
+
+        // Extrai o texto gerado de forma segura
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+
+        res.status(200).json({ text, raw: data });
+    } catch (error) {
+        console.error('Erro na rota /api/gemini/generate:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Simple health check endpoint
 app.get('/health', (req, res) => {
     res.status(200).send('Stripe Backend is running!');
