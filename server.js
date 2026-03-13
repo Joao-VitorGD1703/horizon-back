@@ -136,20 +136,38 @@ app.post('/api/stripe/cancel-subscription', async (req, res) => {
 });
 
 // ─── Gemini AI Proxy ─────────────────────────────────────────────────────────
-// Recebe { prompt, model? } do frontend e repassa ao Google Generative AI API.
-// Evita erros de CORS pois a chamada é feita server-side.
+// Recebe { userMsg, datasetContext, model? } do frontend.
+// Monta o prompt de Revenue Management e repassa ao Google Generative AI API.
+// Evita erros de CORS e mantém a chave de API segura no servidor.
 app.post('/api/gemini/generate', async (req, res) => {
     try {
-        const { prompt, model = 'gemini-2.5-flash' } = req.body;
+        const { userMsg, datasetContext, model = 'gemini-2.5-flash' } = req.body;
 
-        if (!prompt) {
-            return res.status(400).json({ error: 'O campo "prompt" é obrigatório.' });
+        if (!userMsg) {
+            return res.status(400).json({ error: 'O campo "userMsg" é obrigatório.' });
         }
 
         const apiKey = process.env.GEMINI_API_KEY;
         if (!apiKey) {
             return res.status(500).json({ error: 'GEMINI_API_KEY não configurada no servidor.' });
         }
+
+        // Monta o prompt de Revenue Management com os dados do frontend
+        const dataContext = datasetContext ? JSON.stringify(datasetContext) : 'Nenhum dado de contexto fornecido.';
+        const prompt = `Você é um especialista em Revenue Management Hoteleiro focado na otimização do RevPAR (Revenue Per Available Room).
+O usuário forneceu esta tabela de dados JSON contendo as datas, o preço atual do usuário e o preço de 2 concorrentes principais (A e B): 
+${dataContext}
+
+Pergunta correspondente a esses dados: "${userMsg}"
+
+Você deve redigir um relatório analítico curto, altamente profissional e estruturado.
+Regras de formatação (OBRIGATÓRIO):
+1. Comece com um cabeçalho H3 (###) contendo um título resumo da análise.
+2. Separe cada tópico ou mudança de assunto importante com uma linha horizontal (use ---).
+3. Use parágrafos curtos.
+4. Destaque datas e dados numéricos sempre em **negrito**.
+5. Se listar sugestões ou pontos de atenção, use sempre Bullet Points.
+6. Seja direto, como um verdadeiro consultor sênior de Revenue Management hoteleiro.`;
 
         const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
 
@@ -175,7 +193,7 @@ app.post('/api/gemini/generate', async (req, res) => {
         // Extrai o texto gerado de forma segura
         const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 
-        res.status(200).json({ text, raw: data });
+        res.status(200).json({ text });
     } catch (error) {
         console.error('Erro na rota /api/gemini/generate:', error);
         res.status(500).json({ error: error.message });
