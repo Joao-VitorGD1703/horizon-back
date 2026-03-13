@@ -13,7 +13,26 @@ const supabase = createClient(
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+const allowedOrigins = [
+    'https://www.horizonrevenuelmtd.com',
+    'https://horizonrevenuelmtd.com',
+    'http://localhost:5173',
+    'http://localhost:3000',
+];
+
+app.use(cors({
+    origin: (origin, callback) => {
+        // Permite requisições sem origin (ex: Postman, curl) e origens autorizadas
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error(`CORS bloqueado para a origem: ${origin}`));
+        }
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+}));
 
 // Webhook endpoint MUST use raw body for Stripe signature verification
 // It must be defined before express.json()
