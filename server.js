@@ -16,6 +16,7 @@ const PORT = process.env.PORT || 3000;
 const allowedOrigins = [
     'https://www.horizonrevenuelmtd.com',
     'https://horizonrevenuelmtd.com',
+    'https://horizon-revenue.vercel.app',
     'http://localhost:5173',
     'http://localhost:3000',
 ];
