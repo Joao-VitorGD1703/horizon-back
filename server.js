@@ -38,7 +38,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // Responde ao preflight OPTIONS em todas as rotas
-app.options('*', cors(corsOptions));
+app.options(/(.*)/, cors(corsOptions));
 
 // Webhook endpoint MUST use raw body for Stripe signature verification
 // It must be defined before express.json()
