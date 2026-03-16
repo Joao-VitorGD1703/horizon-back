@@ -20,19 +20,25 @@ const allowedOrigins = [
     'http://localhost:3000',
 ];
 
-app.use(cors({
+const corsOptions = {
     origin: (origin, callback) => {
         // Permite requisições sem origin (ex: Postman, curl) e origens autorizadas
         if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
+            console.warn(`[CORS] Origem bloqueada: ${origin}`);
             callback(new Error(`CORS bloqueado para a origem: ${origin}`));
         }
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
-}));
+};
+
+app.use(cors(corsOptions));
+
+// Responde ao preflight OPTIONS em todas as rotas
+app.options('*', cors(corsOptions));
 
 // Webhook endpoint MUST use raw body for Stripe signature verification
 // It must be defined before express.json()
@@ -228,7 +234,7 @@ app.listen(PORT, () => {
     console.log(`Stripe Backend Server running on port ${PORT}`);
 
     // Evita hibernação no Render (plano gratuito dorme após 15 min sem requests)
-    const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
+    const RENDER_URL = process.env.RENDER_EXTERNAL_URL || 'https://horizon-back-u0iy.onrender.com';
     if (RENDER_URL) {
         setInterval(() => {
             fetch(`${RENDER_URL}/health`)

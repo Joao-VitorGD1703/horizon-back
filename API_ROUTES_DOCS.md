@@ -61,9 +61,9 @@ Esta rota **NÃO** deve ser chamada manualmente pelo seu frontend. Ela é chamad
 
 ---
 
-## 4. Gemini AI — Gerar Análise de Revenue Management ⭐ ATUALIZADO
+## 4. Gemini AI — Gerar Análise de Revenue Management
 
-Proxy server-side para a Google Generative AI. O frontend envia apenas a mensagem do usuário e os dados do dataset; o **backend monta o prompt completo** e retorna o texto gerado. A `GEMINI_API_KEY` fica segura no servidor — **não é necessária nenhuma chave de API no frontend**.
+Proxy server-side para a Google Generative AI (REST API). O frontend envia a mensagem do usuário e os dados do dataset; o **backend monta o prompt completo de Revenue Management** e retorna o texto gerado. A `GEMINI_API_KEY` fica segura no servidor — **não é necessária nenhuma chave de API no frontend**.
 
 - **Rota:** `/api/gemini/generate`
 - **Método HTTP:** `POST`
@@ -74,8 +74,9 @@ Proxy server-side para a Google Generative AI. O frontend envia apenas a mensage
 | Campo | Tipo | Obrigatório | Descrição |
 |---|---|---|---|
 | `userMsg` | string | ✅ sim | A pergunta/mensagem digitada pelo usuário no chat |
-| `datasetContext` | array/object | ❌ não | O dataset de preços (usuário + concorrentes) |
-| `model` | string | ❌ não | Modelo Gemini a usar. Default: `gemini-2.5-flash` |
+| `datasetContext` | array/object | ❌ não | Dataset de preços (meu preço + concorrentes A e B) |
+
+> **Atenção:** o campo `model` foi removido. O modelo está fixo em `gemini-2.5-flash` no servidor.
 
 - **Exemplo de Body:**
   ```json
@@ -87,6 +88,12 @@ Proxy server-side para a Google Generative AI. O frontend envia apenas a mensage
   }
   ```
 
+- **O que o backend faz internamente:**
+  1. Serializa `datasetContext` como JSON (ou usa `"Nenhum dado de contexto fornecido."`).
+  2. Monta um prompt de Revenue Management com papel de especialista em RevPAR, regras de formatação Markdown (H3, `---`, **negrito**, bullet points), e injeta `userMsg` e os dados.
+  3. Chama `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=<GEMINI_API_KEY>` via `fetch` REST (sem SDK).
+  4. Extrai o texto em `data.candidates[0].content.parts[0].text` e retorna `{ text }`.
+
 - **Retorno de Sucesso (200 OK):**
   ```json
   {
@@ -95,7 +102,7 @@ Proxy server-side para a Google Generative AI. O frontend envia apenas a mensage
   ```
   > O campo `text` é **Markdown puro**. Passe por `marked.parse(data.text)` antes de exibir no HTML.
 
-- **Como chamar no frontend** (substitui todo o bloco `GoogleGenerativeAI`):
+- **Como chamar no frontend:**
   ```js
   const backendUrl = import.meta.env.VITE_STRIPE_BACKEND_URL || 'http://localhost:3000'
 
@@ -122,8 +129,9 @@ Proxy server-side para a Google Generative AI. O frontend envia apenas a mensage
   - A variável `VITE_GEMINI_API_KEY` do `.env` do frontend (não é mais necessária)
 
 - **Erros Comuns:**
-  - `400 Bad Request`: O campo `userMsg` não foi enviado.
-  - `500 Internal Server Error`: `GEMINI_API_KEY` não configurada no servidor ou falha de rede.
+  - `400 Bad Request`: O campo `userMsg` não foi enviado no body.
+  - `500 Internal Server Error`: `GEMINI_API_KEY` não configurada no servidor, ou erro de rede com a API do Google.
+  - `4xx/5xx` repassado da API Gemini: retorna `{ error: "Erro na API do Gemini", details: {...} }`.
 
 ---
 
