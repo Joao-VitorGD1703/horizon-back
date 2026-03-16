@@ -28,7 +28,8 @@ const corsOptions = {
             callback(null, true);
         } else {
             console.warn(`[CORS] Origem bloqueada: ${origin}`);
-            callback(new Error(`CORS bloqueado para a origem: ${origin}`));
+            // Usa false em vez de Error para evitar 500 sem headers CORS no Express 5
+            callback(null, false);
         }
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -229,6 +230,18 @@ Regras de formatação (OBRIGATÓRIO):
 // Simple health check endpoint
 app.get('/health', (req, res) => {
     res.status(200).send('Stripe Backend is running!');
+});
+
+// Global error handler — garante que erros 500 ainda enviem headers CORS
+// para o browser conseguir ler a resposta de erro
+app.use((err, req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && allowedOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
+    console.error('[Server Error]', err.message);
+    res.status(err.status || 500).json({ error: err.message });
 });
 
 app.listen(PORT, () => {
