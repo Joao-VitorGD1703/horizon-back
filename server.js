@@ -167,20 +167,30 @@ app.post('/api/stripe/cancel-subscription', async (req, res) => {
 // Monta o prompt de Revenue Management e repassa ao Google Generative AI API.
 // Evita erros de CORS e mantém a chave de API segura no servidor.
 app.post('/api/gemini/generate', async (req, res) => {
+    // Timeout de 25s para não deixar a conexão travada no Render
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
+
     try {
-        const { userMsg, datasetContext, model = 'gemini-2.5-flash' } = req.body;
+        const { userMsg, datasetContext } = req.body;
 
         if (!userMsg) {
+            clearTimeout(timeoutId);
             return res.status(400).json({ error: 'O campo "userMsg" é obrigatório.' });
         }
 
         const apiKey = process.env.GEMINI_API_KEY;
         if (!apiKey) {
+            clearTimeout(timeoutId);
             return res.status(500).json({ error: 'GEMINI_API_KEY não configurada no servidor.' });
         }
 
-        // Monta o prompt de Revenue Management com os dados do frontend
-        const dataContext = datasetContext ? JSON.stringify(datasetContext) : 'Nenhum dado de contexto fornecido.';
+        // Limita o contexto a 200 linhas para evitar payloads gigantes que travam o Render
+        const contextData = Array.isArray(datasetContext)
+            ? datasetContext.slice(0, 200)
+            : datasetContext;
+        const dataContext = contextData ? JSON.stringify(contextData) : 'Nenhum dado de contexto fornecido.';
+
         const prompt = `Você é um especialista em Revenue Management Hoteleiro focado na otimização do RevPAR (Revenue Per Available Room).
 O usuário forneceu esta tabela de dados JSON contendo as datas, o preço atual do usuário e o preço de 2 concorrentes principais (A e B): 
 ${dataContext}
@@ -203,8 +213,11 @@ Regras de formatação (OBRIGATÓRIO):
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 contents: [{ parts: [{ text: prompt }] }]
-            })
+            }),
+            signal: controller.signal,
         });
+
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
@@ -216,12 +229,15 @@ Regras de formatação (OBRIGATÓRIO):
         }
 
         const data = await response.json();
-
-        // Extrai o texto gerado de forma segura
         const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 
         res.status(200).json({ text });
     } catch (error) {
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+            console.error('[Gemini] Timeout: requisição demorou mais de 25s');
+            return res.status(504).json({ error: 'A IA demorou demais para responder. Tente novamente.' });
+        }
         console.error('Erro na rota /api/gemini/generate:', error);
         res.status(500).json({ error: error.message });
     }
@@ -242,6 +258,14 @@ app.use((err, req, res, next) => {
     }
     console.error('[Server Error]', err.message);
     res.status(err.status || 500).json({ error: err.message });
+});
+
+// Impede que erros não tratados derrubem o servidor inteiro
+process.on('uncaughtException', (err) => {
+    console.error('[uncaughtException] Servidor não derrubado:', err.message);
+});
+process.on('unhandledRejection', (reason) => {
+    console.error('[unhandledRejection] Promessa não tratada:', reason);
 });
 
 app.listen(PORT, () => {
