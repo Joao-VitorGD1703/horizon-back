@@ -191,20 +191,7 @@ app.post('/api/gemini/generate', async (req, res) => {
             : datasetContext;
         const dataContext = contextData ? JSON.stringify(contextData) : 'Nenhum dado de contexto fornecido.';
 
-        const prompt = `Você é um especialista em Revenue Management Hoteleiro focado na otimização do RevPAR (Revenue Per Available Room).
-O usuário forneceu esta tabela de dados JSON contendo as datas, o preço atual do usuário e o preço de 2 concorrentes principais (A e B): 
-${dataContext}
-
-Pergunta correspondente a esses dados: "${userMsg}"
-
-Você deve redigir um relatório analítico curto, altamente profissional e estruturado.
-Regras de formatação (OBRIGATÓRIO):
-1. Comece com um cabeçalho H3 (###) contendo um título resumo da análise.
-2. Separe cada tópico ou mudança de assunto importante com uma linha horizontal (use ---).
-3. Use parágrafos curtos.
-4. Destaque datas e dados numéricos sempre em **negrito**.
-5. Se listar sugestões ou pontos de atenção, use sempre Bullet Points.
-6. Seja direto, como um verdadeiro consultor sênior de Revenue Management hoteleiro.`;
+        const prompt = `Especialista em Revenue Management Hoteleiro (RevPAR). Dados: ${dataContext}. Pergunta: "${userMsg}". Responda em markdown: título H3, parágrafos curtos, números em **negrito**, bullet points para sugestões. Seja direto e objetivo.`;
 
         const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
