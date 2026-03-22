@@ -115,7 +115,7 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
                             name: 'Assinatura Premium Horizon AI',
                             description: 'Acesso vitalício ou mensal às análises inteligentes de Revenue Management.',
                         },
-                        unit_amount: 100, // R$ 49,90 = 4990 centavos
+                        unit_amount: process.env.PRICE, // R$ 49,90 = 4990 centavos
                     },
                     quantity: 1,
                 },
