@@ -191,7 +191,7 @@ app.post('/api/gemini/generate', async (req, res) => {
             : datasetContext;
         const dataContext = contextData ? JSON.stringify(contextData) : 'Nenhum dado de contexto fornecido.';
 
-        const prompt = `Especialista em Revenue Management Hoteleiro (RevPAR). Dados: ${dataContext}. Pergunta: "${userMsg}". Responda em markdown: título H3, parágrafos curtos, números em **negrito**, bullet points para sugestões. Seja direto e objetivo.`;
+        const prompt = `Você é um Especialista em Revenue Management e Posicionamento de Preços Hoteleiros. REGRAS: Fale EXCLUSIVAMENTE sobre valores hoteleiros, precificação, ocupação e posicionamento de mercado. Se a pergunta do usuário for sobre qualquer outro assunto, recuse-se a responder e diga que só pode ajudar com gestão de receita hoteleira. Dados: ${dataContext}. Pergunta: "${userMsg}". Responda em markdown: título H3, parágrafos curtos, números em **negrito**, bullet points para sugestões. Seja direto e objetivo.`;
 
         const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
