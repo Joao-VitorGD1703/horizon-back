@@ -43,18 +43,23 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
 
         if (userId) {
             try {
-                // Update user in Supabase
-                // Using subscription_status to allow access to AI features
-                // or pagou_stripe if you prefer. Setting subscription_status to 'premium'
-                const { data, error } = await supabase
-                    .from('users') // Adjust if your table name is 'usuarios'
-                    .update({ subscription_status: 'premium' })
+                // Calculate grace period end: 30 days from now
+                const subscriptionEndsAt = new Date();
+                subscriptionEndsAt.setDate(subscriptionEndsAt.getDate() + 30);
+
+                const { error } = await supabase
+                    .from('users')
+                    .update({
+                        subscription_status: 'premium',
+                        subscription_ends_at: subscriptionEndsAt.toISOString(),
+                        cancel_at_period_end: false
+                    })
                     .eq('id', userId);
 
                 if (error) {
                     console.error('Error updating user in Supabase:', error);
                 } else {
-                    console.log(`Payment successful for user ${userId}. Updated subscription_status to 'premium'.`);
+                    console.log(`Payment successful for user ${userId}. Premium active until ${subscriptionEndsAt.toISOString()}.`);
                 }
             } catch (updateError) {
                 console.error('Supabase update exception:', updateError);
@@ -108,7 +113,8 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
     }
 });
 
-// Endpoint to cancel the subscription and revert to trial
+// Endpoint to schedule subscription cancellation at period end.
+// The user keeps Premium access until subscription_ends_at, then loses it.
 app.post('/api/stripe/cancel-subscription', async (req, res) => {
     try {
         const { userId } = req.body;
@@ -117,9 +123,22 @@ app.post('/api/stripe/cancel-subscription', async (req, res) => {
             return res.status(400).json({ error: 'User ID is required' });
         }
 
-        const { data, error } = await supabase
-            .from('users') // Adjust if your table name is 'usuarios'
-            .update({ subscription_status: 'trial' })
+        // Fetch current subscription_ends_at so we can return it to the frontend
+        const { data: userData, error: fetchError } = await supabase
+            .from('users')
+            .select('subscription_ends_at')
+            .eq('id', userId)
+            .single();
+
+        if (fetchError) {
+            console.error('Error fetching user in Supabase:', fetchError);
+            return res.status(500).json({ error: 'Failed to fetch subscription data' });
+        }
+
+        // Mark cancellation scheduled — do NOT revert status yet; access remains until subscription_ends_at
+        const { error } = await supabase
+            .from('users')
+            .update({ cancel_at_period_end: true })
             .eq('id', userId);
 
         if (error) {
@@ -127,8 +146,13 @@ app.post('/api/stripe/cancel-subscription', async (req, res) => {
             return res.status(500).json({ error: 'Failed to cancel subscription' });
         }
 
-        console.log(`Subscription cancelled for user ${userId}. Reverted to 'trial'.`);
-        res.status(200).json({ message: 'Subscription cancelled successfully', status: 'trial' });
+        const endsAt = userData?.subscription_ends_at || null;
+        console.log(`Cancellation scheduled for user ${userId}. Access remains until ${endsAt}.`);
+        res.status(200).json({
+            message: 'Cancellation scheduled. Access remains until period end.',
+            cancel_at_period_end: true,
+            subscription_ends_at: endsAt
+        });
     } catch (error) {
         console.error('Error creating cancel request:', error);
         res.status(500).json({ error: error.message });
