@@ -13,7 +13,34 @@ const supabase = createClient(
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+const allowedOrigins = [
+    'https://www.horizonrevenuelmtd.com',
+    'https://horizonrevenuelmtd.com',
+    'https://horizon-revenue.vercel.app',
+    'http://localhost:5173',
+    'http://localhost:3000',
+];
+
+const corsOptions = {
+    origin: (origin, callback) => {
+        // Permite requisições sem origin (ex: Postman, curl) e origens autorizadas
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            console.warn(`[CORS] Origem bloqueada: ${origin}`);
+            // Usa false em vez de Error para evitar 500 sem headers CORS no Express 5
+            callback(null, false);
+        }
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+};
+
+app.use(cors(corsOptions));
+
+// Responde ao preflight OPTIONS em todas as rotas
+app.options(/(.*)/, cors(corsOptions));
 
 // Webhook endpoint MUST use raw body for Stripe signature verification
 // It must be defined before express.json()
@@ -93,7 +120,7 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
                             name: 'Assinatura Premium Horizon AI',
                             description: 'Acesso vitalício ou mensal às análises inteligentes de Revenue Management.',
                         },
-                        unit_amount: 100, // R$ 49,90 = 4990 centavos
+                        unit_amount: process.env.PRICE, // R$ 49,90 = 4990 centavos
                     },
                     quantity: 1,
                 },
@@ -159,11 +186,109 @@ app.post('/api/stripe/cancel-subscription', async (req, res) => {
     }
 });
 
+// ─── Gemini AI Proxy ─────────────────────────────────────────────────────────
+// Recebe { userMsg, datasetContext, model? } do frontend.
+// Monta o prompt de Revenue Management e repassa ao Google Generative AI API.
+// Evita erros de CORS e mantém a chave de API segura no servidor.
+app.post('/api/gemini/generate', async (req, res) => {
+    // Timeout de 25s para não deixar a conexão travada no Render
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
+
+    try {
+        const { userMsg, datasetContext } = req.body;
+
+        if (!userMsg) {
+            clearTimeout(timeoutId);
+            return res.status(400).json({ error: 'O campo "userMsg" é obrigatório.' });
+        }
+
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) {
+            clearTimeout(timeoutId);
+            return res.status(500).json({ error: 'GEMINI_API_KEY não configurada no servidor.' });
+        }
+
+        // Limita o contexto a 200 linhas para evitar payloads gigantes que travam o Render
+        const contextData = Array.isArray(datasetContext)
+            ? datasetContext.slice(0, 200)
+            : datasetContext;
+        const dataContext = contextData ? JSON.stringify(contextData) : 'Nenhum dado de contexto fornecido.';
+
+        const prompt = `Você é um Especialista em Revenue Management e Posicionamento de Preços Hoteleiros. REGRAS: Fale EXCLUSIVAMENTE sobre valores hoteleiros, precificação, ocupação e posicionamento de mercado. Se a pergunta do usuário for sobre qualquer outro assunto, recuse-se a responder e diga que só pode ajudar com gestão de receita hoteleira. Dados: ${dataContext}. Pergunta: "${userMsg}". Responda em markdown: título H3, parágrafos curtos, números em **negrito**, bullet points para sugestões. Seja direto e objetivo.`;
+
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+
+        const response = await fetch(geminiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }]
+            }),
+            signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            console.error('Gemini API error:', errorData);
+            return res.status(response.status).json({
+                error: 'Erro na API do Gemini',
+                details: errorData
+            });
+        }
+
+        const data = await response.json();
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+
+        res.status(200).json({ text });
+    } catch (error) {
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+            console.error('[Gemini] Timeout: requisição demorou mais de 25s');
+            return res.status(504).json({ error: 'A IA demorou demais para responder. Tente novamente.' });
+        }
+        console.error('Erro na rota /api/gemini/generate:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Simple health check endpoint
 app.get('/health', (req, res) => {
     res.status(200).send('Stripe Backend is running!');
 });
 
+// Global error handler — garante que erros 500 ainda enviem headers CORS
+// para o browser conseguir ler a resposta de erro
+app.use((err, req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && allowedOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
+    console.error('[Server Error]', err.message);
+    res.status(err.status || 500).json({ error: err.message });
+});
+
+// Impede que erros não tratados derrubem o servidor inteiro
+process.on('uncaughtException', (err) => {
+    console.error('[uncaughtException] Servidor não derrubado:', err.message);
+});
+process.on('unhandledRejection', (reason) => {
+    console.error('[unhandledRejection] Promessa não tratada:', reason);
+});
+
 app.listen(PORT, () => {
     console.log(`Stripe Backend Server running on port ${PORT}`);
+
+    // Evita hibernação no Render (plano gratuito dorme após 15 min sem requests)
+    const RENDER_URL = process.env.RENDER_EXTERNAL_URL || 'https://horizon-back-u0iy.onrender.com';
+    if (RENDER_URL) {
+        setInterval(() => {
+            fetch(`${RENDER_URL}/health`)
+                .then(() => console.log('[keep-alive] ping OK'))
+                .catch((err) => console.warn('[keep-alive] ping falhou:', err.message));
+        }, 14 * 60 * 1000); // a cada 14 minutos
+    }
 });
