@@ -70,9 +70,9 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
 
         if (userId) {
             try {
-                // Calculate grace period end: 30 days from now
+                // Calculate grace period end: 1 month from now
                 const subscriptionEndsAt = new Date();
-                subscriptionEndsAt.setDate(subscriptionEndsAt.getDate() + 30);
+                subscriptionEndsAt.setMonth(subscriptionEndsAt.getMonth() + 1);
 
                 const { error } = await supabase
                     .from('users')
