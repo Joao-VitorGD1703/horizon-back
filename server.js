@@ -112,10 +112,10 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
         const session = await stripe.checkout.sessions.create({
             payment_method_types: ['card'],
             mode: 'subscription',
-            discounts: { promotion_code: 'ID_DO_CUPOM' },
+            discounts: [{ promotion_code: process.env.CUPOM }],
             line_items: [
                 {
-                    price: 'price_xxx', // criar o Price no painel do Stripe (R$49,90/mês)
+                    price: process.env.PRICE,
                     quantity: 1,
                 },
             ],
