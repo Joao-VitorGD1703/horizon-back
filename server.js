@@ -111,24 +111,15 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
 
         const session = await stripe.checkout.sessions.create({
             payment_method_types: ['card'],
-            mode: 'payment', // using onetime payment
+            mode: 'subscription',
+            discounts: { promotion_code: 'ID_DO_CUPOM' },
             line_items: [
                 {
-                    price_data: {
-                        currency: 'brl',
-                        product_data: {
-                            name: 'Assinatura Premium Horizon AI',
-                            description: 'Acesso vitalício ou mensal às análises inteligentes de Revenue Management.',
-                        },
-                        unit_amount: process.env.PRICE, // R$ 49,90 = 4990 centavos
-                    },
+                    price: 'price_xxx', // criar o Price no painel do Stripe (R$49,90/mês)
                     quantity: 1,
                 },
             ],
-            // Adding userId to metadata to retrieve it in the webhook
-            metadata: {
-                userId: userId
-            },
+            metadata: { userId },
             success_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/success`,
             cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard`,
         });
