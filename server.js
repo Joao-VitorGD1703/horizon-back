@@ -115,7 +115,7 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
             discounts: [{ promotion_code: process.env.CUPOM }],
             line_items: [
                 {
-                    price: process.env.PRICE,
+                    unit_amount: process.env.PRICE,
                     quantity: 1,
                 },
             ],
