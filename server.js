@@ -78,7 +78,7 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
                     .from('users')
                     .update({
                         subscription_status: 'premium',
-                        subscription_ends_at: subscriptionEndsAt.toISOString(),
+                        premium_until: subscriptionEndsAt.toISOString(),
                         cancel_at_period_end: false
                     })
                     .eq('id', userId);
@@ -153,7 +153,7 @@ app.post('/api/stripe/cancel-subscription', async (req, res) => {
         // Fetch current subscription_ends_at so we can return it to the frontend
         const { data: userData, error: fetchError } = await supabase
             .from('users')
-            .select('subscription_ends_at')
+            .select('premium_until')
             .eq('id', userId)
             .single();
 
@@ -173,7 +173,7 @@ app.post('/api/stripe/cancel-subscription', async (req, res) => {
             return res.status(500).json({ error: 'Failed to cancel subscription' });
         }
 
-        const endsAt = userData?.subscription_ends_at || null;
+        const endsAt = userData?.premium_until || null;
         console.log(`Cancellation scheduled for user ${userId}. Access remains until ${endsAt}.`);
         res.status(200).json({
             message: 'Cancellation scheduled. Access remains until period end.',
