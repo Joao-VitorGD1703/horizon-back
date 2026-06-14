@@ -112,7 +112,7 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
         const session = await stripe.checkout.sessions.create({
             payment_method_types: ['card'],
             mode: 'subscription',
-            discounts: [{ promotion_code: process.env.CUPOM }],
+            discounts: [{ coupon: 'gO7P02Az'  }],
             line_items: [
                 {
                     price: process.env.PRICE,
